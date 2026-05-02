@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import HTTPException, Request
@@ -17,6 +17,10 @@ from redis_client import add_key_value_redis, delete_key_redis, get_value_redis
 
 CLIENT_ID = os.getenv("HUBSPOT_CLIENT_ID", "").strip()
 CLIENT_SECRET = os.getenv("HUBSPOT_CLIENT_SECRET", "").strip()
+PRIVATE_ACCESS_TOKEN = (
+    os.getenv("HUBSPOT_ACCESS_TOKEN", "").strip()
+    or os.getenv("HUBSPOT_PRIVATE_APP_TOKEN", "").strip()
+)
 REDIRECT_URI = os.getenv(
     "HUBSPOT_REDIRECT_URI",
     "http://localhost:8000/integrations/hubspot/oauth2callback",
@@ -35,6 +39,13 @@ OAUTH_TOKEN_URL = "https://api.hubapi.com/oauth/v1/token"
 CRM_BASE_URL = "https://api.hubapi.com/crm/v3/objects"
 DEFAULT_PAGE_SIZE = 100
 DEFAULT_MAX_ITEMS_PER_OBJECT = int(os.getenv("HUBSPOT_MAX_ITEMS_PER_OBJECT", "100"))
+CLOSE_WINDOW_HTML = """
+<html>
+    <script>
+        window.close();
+    </script>
+</html>
+""".strip()
 
 HUBSPOT_OBJECTS = (
     {
@@ -89,15 +100,23 @@ HUBSPOT_OBJECTS = (
 )
 
 
-def _ensure_hubspot_oauth_configured() -> None:
-    if CLIENT_ID and CLIENT_SECRET:
+def _private_access_token_configured() -> bool:
+    return bool(PRIVATE_ACCESS_TOKEN)
+
+
+def _oauth_configured() -> bool:
+    return bool(CLIENT_ID and CLIENT_SECRET)
+
+
+def _ensure_hubspot_connection_configured() -> None:
+    if _private_access_token_configured() or _oauth_configured():
         return
 
     raise HTTPException(
         status_code=500,
         detail=(
-            "HubSpot OAuth is not configured. Set HUBSPOT_CLIENT_ID and "
-            "HUBSPOT_CLIENT_SECRET before using this integration."
+            "HubSpot is not configured. Set HUBSPOT_ACCESS_TOKEN for private-app "
+            "access or HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET for OAuth."
         ),
     )
 
@@ -125,6 +144,10 @@ def _build_authorization_url(encoded_state: str) -> str:
         }
     )
     return f"{OAUTH_AUTHORIZE_URL}?{query}"
+
+
+def _build_close_window_data_url() -> str:
+    return f"data:text/html;charset=utf-8,{quote(CLOSE_WINDOW_HTML)}"
 
 
 def _parse_hubspot_error(raw_response: str) -> str:
@@ -334,10 +357,25 @@ async def _refresh_access_token(credentials: dict[str, Any]) -> dict[str, Any]:
 
 async def _get_valid_access_token(credentials: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     if _credentials_expired(credentials):
-        _ensure_hubspot_oauth_configured()
+        if not _oauth_configured():
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "HubSpot credentials expired and OAuth refresh is unavailable. "
+                    "Configure HUBSPOT_CLIENT_ID and HUBSPOT_CLIENT_SECRET or use "
+                    "HUBSPOT_ACCESS_TOKEN."
+                ),
+            )
         credentials = await _refresh_access_token(credentials)
 
     access_token = credentials.get("access_token") or credentials.get("accessToken")
+    if not access_token and _private_access_token_configured():
+        access_token = PRIVATE_ACCESS_TOKEN
+        credentials = {
+            **credentials,
+            "access_token": PRIVATE_ACCESS_TOKEN,
+            "auth_type": "private_app",
+        }
     if not access_token:
         raise HTTPException(
             status_code=400,
@@ -391,7 +429,21 @@ async def _fetch_crm_collection(
 
 
 async def authorize_hubspot(user_id: str, org_id: str) -> str:
-    _ensure_hubspot_oauth_configured()
+    _ensure_hubspot_connection_configured()
+
+    if _private_access_token_configured():
+        await add_key_value_redis(
+            f"hubspot_credentials:{org_id}:{user_id}",
+            json.dumps(
+                {
+                    "access_token": PRIVATE_ACCESS_TOKEN,
+                    "token_type": "bearer",
+                    "auth_type": "private_app",
+                }
+            ),
+            expire=600,
+        )
+        return _build_close_window_data_url()
 
     state_data = {
         "state": secrets.token_urlsafe(32),
@@ -447,13 +499,7 @@ async def oauth2callback_hubspot(request: Request) -> HTMLResponse:
     )
 
     return HTMLResponse(
-        content="""
-        <html>
-            <script>
-                window.close();
-            </script>
-        </html>
-        """
+        content=CLOSE_WINDOW_HTML
     )
 
 

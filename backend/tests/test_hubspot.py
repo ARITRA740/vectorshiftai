@@ -54,6 +54,31 @@ def test_authorize_hubspot_stores_state_and_builds_expected_url(monkeypatch):
     assert stored_state["org_id"] == "org-456"
 
 
+def test_authorize_hubspot_uses_private_access_token_when_configured(monkeypatch):
+    captured = {}
+
+    async def fake_add_key_value_redis(key, value, expire=None):
+        captured["key"] = key
+        captured["value"] = value
+        captured["expire"] = expire
+
+    monkeypatch.setattr(hubspot, "PRIVATE_ACCESS_TOKEN", "pat-test-token")
+    monkeypatch.setattr(hubspot, "CLIENT_ID", "")
+    monkeypatch.setattr(hubspot, "CLIENT_SECRET", "")
+    monkeypatch.setattr(hubspot, "add_key_value_redis", fake_add_key_value_redis)
+
+    authorization_url = asyncio.run(hubspot.authorize_hubspot("user-123", "org-456"))
+
+    assert authorization_url.startswith("data:text/html")
+    assert captured["key"] == "hubspot_credentials:org-456:user-123"
+    assert captured["expire"] == 600
+    assert json.loads(captured["value"]) == {
+        "access_token": "pat-test-token",
+        "token_type": "bearer",
+        "auth_type": "private_app",
+    }
+
+
 def test_create_integration_item_metadata_object_prefers_contact_name():
     item = hubspot.create_integration_item_metadata_object(
         response_json={
@@ -104,6 +129,18 @@ def test_get_valid_access_token_refreshes_expired_credentials(monkeypatch):
 
     assert access_token == "new-access-token"
     assert normalized_credentials == refreshed_credentials
+
+
+def test_get_valid_access_token_falls_back_to_private_access_token(monkeypatch):
+    monkeypatch.setattr(hubspot, "PRIVATE_ACCESS_TOKEN", "pat-test-token")
+
+    access_token, normalized_credentials = asyncio.run(
+        hubspot._get_valid_access_token({})
+    )
+
+    assert access_token == "pat-test-token"
+    assert normalized_credentials["auth_type"] == "private_app"
+    assert normalized_credentials["access_token"] == "pat-test-token"
 
 
 def test_get_items_hubspot_returns_grouped_items(monkeypatch):
