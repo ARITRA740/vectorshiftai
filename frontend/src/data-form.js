@@ -9,6 +9,7 @@ import axios from 'axios';
 const endpointMapping = {
     'Notion': 'notion',
     'Airtable': 'airtable',
+    'HubSpot': 'hubspot',
 };
 
 export const DataForm = ({ integrationType, credentials }) => {
@@ -17,10 +18,11 @@ export const DataForm = ({ integrationType, credentials }) => {
 
     const handleLoad = async () => {
         try {
-            const formData = new FormData();
-            formData.append('credentials', JSON.stringify(credentials));
-            const response = await axios.post(`http://localhost:8000/integrations/${endpoint}/load`, formData);
+            const response = await axios.post(`http://localhost:8000/integrations/${endpoint}/load`, {
+                credentials: JSON.stringify(credentials),
+            });
             const data = response.data;
+            console.log('Loaded integration data:', data);
             setLoadedData(data);
         } catch (e) {
             alert(e?.response?.data?.detail);
@@ -32,9 +34,11 @@ export const DataForm = ({ integrationType, credentials }) => {
             <Box display='flex' flexDirection='column' width='100%'>
                 <TextField
                     label="Loaded Data"
-                    value={loadedData || ''}
+                    value={loadedData ? JSON.stringify(loadedData, null, 2) : ''}
                     sx={{mt: 2}}
                     InputLabelProps={{ shrink: true }}
+                    multiline
+                    minRows={12}
                     disabled
                 />
                 <Button

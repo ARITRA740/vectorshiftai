@@ -1,19 +1,17 @@
-# airtable.py
-
-import datetime
-import json
-import secrets
-from fastapi import Request, HTTPException
-from fastapi.responses import HTMLResponse
-import httpx
 import asyncio
 import base64
 import hashlib
+import json
+import secrets
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request as UrlRequest, urlopen
 
-import requests
+from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse
+
 from integrations.integration_item import IntegrationItem
-
-from redis_client import add_key_value_redis, get_value_redis, delete_key_redis
+from redis_client import add_key_value_redis, delete_key_redis, get_value_redis
 
 # CLIENT_ID = 'XXX'
 # CLIENT_SECRET = 'XXX'
@@ -24,6 +22,30 @@ authorization_url = f'https://airtable.com/oauth2/v1/authorize?client_id={CLIENT
 
 encoded_client_id_secret = base64.b64encode(f'{CLIENT_ID}:{CLIENT_SECRET}'.encode()).decode()
 scope = 'data.records:read data.records:write data.recordComments:read data.recordComments:write schema.bases:read schema.bases:write'
+
+
+def _send_http_request(url: str, *, method='GET', headers=None, data=None, params=None):
+    if params:
+        query = urlencode(params)
+        separator = '&' if '?' in url else '?'
+        url = f'{url}{separator}{query}'
+
+    encoded_body = None
+    if data is not None:
+        encoded_body = urlencode(data).encode('utf-8')
+
+    request = UrlRequest(url=url, data=encoded_body, method=method.upper())
+    for key, value in (headers or {}).items():
+        request.add_header(key, value)
+
+    try:
+        with urlopen(request, timeout=30) as response:
+            return response.status, response.read().decode('utf-8')
+    except HTTPError as exc:
+        return exc.code, exc.read().decode('utf-8', errors='replace')
+    except URLError as exc:
+        raise HTTPException(status_code=502, detail=f'Unable to reach Airtable: {exc.reason}') from exc
+
 
 async def authorize_airtable(user_id, org_id):
     state_data = {
@@ -46,6 +68,7 @@ async def authorize_airtable(user_id, org_id):
 
     return auth_url
 
+
 async def oauth2callback_airtable(request: Request):
     if request.query_params.get('error'):
         raise HTTPException(status_code=400, detail=request.query_params.get('error_description'))
@@ -62,31 +85,38 @@ async def oauth2callback_airtable(request: Request):
         get_value_redis(f'airtable_verifier:{org_id}:{user_id}'),
     )
 
-    if not saved_state or original_state != json.loads(saved_state).get('state'):
+    saved_state_payload = json.loads(saved_state if isinstance(saved_state, str) else saved_state.decode('utf-8'))
+    code_verifier_value = code_verifier if isinstance(code_verifier, str) else code_verifier.decode('utf-8')
+
+    if not saved_state or original_state != saved_state_payload.get('state'):
         raise HTTPException(status_code=400, detail='State does not match.')
 
-    async with httpx.AsyncClient() as client:
-        response, _, _ = await asyncio.gather(
-            client.post(
-                'https://airtable.com/oauth2/v1/token',
-                data={
-                    'grant_type': 'authorization_code',
-                    'code': code,
-                    'redirect_uri': REDIRECT_URI,
-                    'client_id': CLIENT_ID,
-                    'code_verifier': code_verifier.decode('utf-8'),
-                },
-                headers={
-                    'Authorization': f'Basic {encoded_client_id_secret}',
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                }
-            ),
-            delete_key_redis(f'airtable_state:{org_id}:{user_id}'),
-            delete_key_redis(f'airtable_verifier:{org_id}:{user_id}'),
-        )
+    response_status, response_body = await asyncio.to_thread(
+        _send_http_request,
+        'https://airtable.com/oauth2/v1/token',
+        method='POST',
+        data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': REDIRECT_URI,
+            'client_id': CLIENT_ID,
+            'code_verifier': code_verifier_value,
+        },
+        headers={
+            'Authorization': f'Basic {encoded_client_id_secret}',
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+    )
+    await asyncio.gather(
+        delete_key_redis(f'airtable_state:{org_id}:{user_id}'),
+        delete_key_redis(f'airtable_verifier:{org_id}:{user_id}'),
+    )
 
-    await add_key_value_redis(f'airtable_credentials:{org_id}:{user_id}', json.dumps(response.json()), expire=600)
-    
+    if response_status != 200:
+        raise HTTPException(status_code=response_status, detail=response_body)
+
+    await add_key_value_redis(f'airtable_credentials:{org_id}:{user_id}', response_body, expire=600)
+
     close_window_script = """
     <html>
         <script>
@@ -96,14 +126,16 @@ async def oauth2callback_airtable(request: Request):
     """
     return HTMLResponse(content=close_window_script)
 
+
 async def get_airtable_credentials(user_id, org_id):
     credentials = await get_value_redis(f'airtable_credentials:{org_id}:{user_id}')
     if not credentials:
         raise HTTPException(status_code=400, detail='No credentials found.')
-    credentials = json.loads(credentials)
+    credentials = json.loads(credentials if isinstance(credentials, str) else credentials.decode('utf-8'))
     await delete_key_redis(f'airtable_credentials:{org_id}:{user_id}')
 
     return credentials
+
 
 def create_integration_item_metadata_object(
     response_json: str, item_type: str, parent_id=None, parent_name=None
@@ -123,22 +155,20 @@ def create_integration_item_metadata_object(
 def fetch_items(
     access_token: str, url: str, aggregated_response: list, offset=None
 ) -> dict:
-    """Fetching the list of bases"""
     params = {'offset': offset} if offset is not None else {}
     headers = {'Authorization': f'Bearer {access_token}'}
-    response = requests.get(url, headers=headers, params=params)
+    status_code, response_body = _send_http_request(url, headers=headers, params=params)
 
-    if response.status_code == 200:
-        results = response.json().get('bases', {})
-        offset = response.json().get('offset', None)
+    if status_code == 200:
+        payload = json.loads(response_body)
+        results = payload.get('bases', {})
+        offset = payload.get('offset', None)
 
         for item in results:
             aggregated_response.append(item)
 
         if offset is not None:
             fetch_items(access_token, url, aggregated_response, offset)
-        else:
-            return
 
 
 async def get_items_airtable(credentials) -> list[IntegrationItem]:
@@ -152,12 +182,13 @@ async def get_items_airtable(credentials) -> list[IntegrationItem]:
         list_of_integration_item_metadata.append(
             create_integration_item_metadata_object(response, 'Base')
         )
-        tables_response = requests.get(
+        tables_status, tables_body = await asyncio.to_thread(
+            _send_http_request,
             f'https://api.airtable.com/v0/meta/bases/{response.get("id")}/tables',
             headers={'Authorization': f'Bearer {credentials.get("access_token")}'},
         )
-        if tables_response.status_code == 200:
-            tables_response = tables_response.json()
+        if tables_status == 200:
+            tables_response = json.loads(tables_body)
             for table in tables_response['tables']:
                 list_of_integration_item_metadata.append(
                     create_integration_item_metadata_object(

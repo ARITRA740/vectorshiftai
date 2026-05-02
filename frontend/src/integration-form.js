@@ -5,12 +5,14 @@ import {
     TextField,
 } from '@mui/material';
 import { AirtableIntegration } from './integrations/airtable';
+import { HubSpotIntegration } from './integrations/hubspot';
 import { NotionIntegration } from './integrations/notion';
 import { DataForm } from './data-form';
 
 const integrationMapping = {
     'Notion': NotionIntegration,
     'Airtable': AirtableIntegration,
+    'HubSpot': HubSpotIntegration,
 };
 
 export const IntegrationForm = () => {

@@ -16,10 +16,10 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
     const handleConnectClick = async () => {
         try {
             setIsConnecting(true);
-            const formData = new FormData();
-            formData.append('user_id', user);
-            formData.append('org_id', org);
-            const response = await axios.post(`http://localhost:8000/integrations/airtable/authorize`, formData);
+            const response = await axios.post(`http://localhost:8000/integrations/airtable/authorize`, {
+                user_id: user,
+                org_id: org,
+            });
             const authURL = response?.data;
 
             const newWindow = window.open(authURL, 'Airtable Authorization', 'width=600, height=600');
@@ -40,10 +40,10 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
     // Function to handle logic when the OAuth window closes
     const handleWindowClosed = async () => {
         try {
-            const formData = new FormData();
-            formData.append('user_id', user);
-            formData.append('org_id', org);
-            const response = await axios.post(`http://localhost:8000/integrations/airtable/credentials`, formData);
+            const response = await axios.post(`http://localhost:8000/integrations/airtable/credentials`, {
+                user_id: user,
+                org_id: org,
+            });
             const credentials = response.data; 
             if (credentials) {
                 setIsConnecting(false);
@@ -58,8 +58,8 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
     }
 
     useEffect(() => {
-        setIsConnected(integrationParams?.credentials ? true : false)
-    }, []);
+        setIsConnected(Boolean(integrationParams?.credentials));
+    }, [integrationParams]);
 
     return (
         <>
