@@ -6,6 +6,8 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 const endpointMapping = {
     'Notion': 'notion',
     'Airtable': 'airtable',
@@ -18,7 +20,7 @@ export const DataForm = ({ integrationType, credentials }) => {
 
     const handleLoad = async () => {
         try {
-            const response = await axios.post(`http://localhost:8000/integrations/${endpoint}/load`, {
+            const response = await axios.post(`${API_BASE_URL}/integrations/${endpoint}/load`, {
                 credentials: JSON.stringify(credentials),
             });
             const data = response.data;

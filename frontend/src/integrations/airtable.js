@@ -8,6 +8,8 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 export const AirtableIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
@@ -16,7 +18,7 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
     const handleConnectClick = async () => {
         try {
             setIsConnecting(true);
-            const response = await axios.post(`http://localhost:8000/integrations/airtable/authorize`, {
+            const response = await axios.post(`${API_BASE_URL}/integrations/airtable/authorize`, {
                 user_id: user,
                 org_id: org,
             });
@@ -40,7 +42,7 @@ export const AirtableIntegration = ({ user, org, integrationParams, setIntegrati
     // Function to handle logic when the OAuth window closes
     const handleWindowClosed = async () => {
         try {
-            const response = await axios.post(`http://localhost:8000/integrations/airtable/credentials`, {
+            const response = await axios.post(`${API_BASE_URL}/integrations/airtable/credentials`, {
                 user_id: user,
                 org_id: org,
             });

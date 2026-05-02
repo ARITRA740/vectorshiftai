@@ -69,6 +69,7 @@ Set the following environment variables in your shell or `.env` workflow:
 - `HUBSPOT_CLIENT_SECRET`
 - `HUBSPOT_REDIRECT_URI`
 - `HUBSPOT_SCOPES`
+- `ALLOWED_ORIGINS`
 - `REDIS_HOST`
 
 Install backend dependencies:
@@ -91,10 +92,13 @@ From `frontend/`:
 
 ```powershell
 npm install
+Copy-Item .env.example .env
 npm start
 ```
 
 The UI will be available at `http://localhost:3000` and the backend at `http://localhost:8000`.
+
+Set `REACT_APP_API_BASE_URL` in `frontend/.env` when the frontend should talk to a deployed backend instead of localhost.
 
 ## How to Use
 
@@ -138,6 +142,32 @@ python -m pytest -q
 Validated result in this workspace:
 
 - `4 passed in 0.41s`
+
+## Deployment Notes
+
+The repository is structured as a small monorepo, so the clean deployment approach is to deploy `frontend/` and `backend/` as two separate projects.
+
+### Frontend
+
+- Deploy the `frontend/` directory as a Create React App project
+- Set `REACT_APP_API_BASE_URL` to your deployed backend URL
+
+### Backend
+
+- Deploy the `backend/` directory as a FastAPI project
+- `backend/index.py` exposes the FastAPI app for Vercel-style Python deployment discovery
+- Set:
+  - `HUBSPOT_CLIENT_ID`
+  - `HUBSPOT_CLIENT_SECRET`
+  - `HUBSPOT_REDIRECT_URI`
+  - `HUBSPOT_SCOPES`
+  - `ALLOWED_ORIGINS`
+
+### HubSpot OAuth
+
+After deployment, update your HubSpot app’s redirect URL to the deployed backend callback, for example:
+
+`https://your-backend-domain/integrations/hubspot/oauth2callback`
 
 ## Key Files
 

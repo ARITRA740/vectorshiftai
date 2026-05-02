@@ -6,6 +6,8 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 export const HubSpotIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
@@ -14,7 +16,7 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
         try {
             setIsConnecting(true);
             const response = await axios.post(
-                'http://localhost:8000/integrations/hubspot/authorize',
+                `${API_BASE_URL}/integrations/hubspot/authorize`,
                 {
                     user_id: user,
                     org_id: org,
@@ -38,7 +40,7 @@ export const HubSpotIntegration = ({ user, org, integrationParams, setIntegratio
     const handleWindowClosed = async () => {
         try {
             const response = await axios.post(
-                'http://localhost:8000/integrations/hubspot/credentials',
+                `${API_BASE_URL}/integrations/hubspot/credentials`,
                 {
                     user_id: user,
                     org_id: org,

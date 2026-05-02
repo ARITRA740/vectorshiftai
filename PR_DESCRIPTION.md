@@ -34,6 +34,7 @@ This PR completes the HubSpot portion of the VectorShift integrations assessment
 - updated the load-data UI to display JSON responses more clearly
 - added a minimal `backend/requirements-assessment.txt` because the starter `requirements.txt` contains unrelated legacy packages and failed on Windows due to `pycurl`
 - added a lightweight in-memory fallback for Redis and replaced Airtable/Notion network helpers with standard-library HTTP calls to reduce local runtime dependencies
+- made the app deployment-ready by removing hardcoded localhost URLs, adding configurable frontend API base URL support, adding configurable backend CORS origins, and exposing a Vercel-friendly backend entrypoint
 - added backend tests covering auth URL generation, item mapping, token refresh, and grouped item loading
 
 ## Key Design Decisions

@@ -34,11 +34,15 @@
 
 "I also improved the result display so loaded data is shown as formatted JSON instead of a raw object string. That makes the demo clearer and makes debugging easier."
 
+"I also removed hardcoded localhost API URLs and made the frontend use an environment-based API base URL, which makes the app much easier to deploy."
+
 ## 6. Testing
 
 "I added backend tests in `backend/tests/test_hubspot.py`. These validate the OAuth URL and state behavior, item mapping, expired token refresh logic, and grouped item loading behavior."
 
 "In this environment, the tests pass with four passing checks."
+
+"I also added deployment-oriented changes: configurable backend CORS origins, a Vercel-friendly backend entrypoint, and frontend environment variables for the API base URL."
 
 ## 7. Demo Flow
 

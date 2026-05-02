@@ -8,6 +8,8 @@ import {
 } from '@mui/material';
 import axios from 'axios';
 
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
 export const NotionIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
@@ -16,7 +18,7 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
     const handleConnectClick = async () => {
         try {
             setIsConnecting(true);
-            const response = await axios.post(`http://localhost:8000/integrations/notion/authorize`, {
+            const response = await axios.post(`${API_BASE_URL}/integrations/notion/authorize`, {
                 user_id: user,
                 org_id: org,
             });
@@ -41,7 +43,7 @@ export const NotionIntegration = ({ user, org, integrationParams, setIntegration
     // Function to handle logic when the OAuth window closes
     const handleWindowClosed = async () => {
         try {
-            const response = await axios.post(`http://localhost:8000/integrations/notion/credentials`, {
+            const response = await axios.post(`${API_BASE_URL}/integrations/notion/credentials`, {
                 user_id: user,
                 org_id: org,
             });

@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -8,9 +10,13 @@ from integrations.hubspot import authorize_hubspot, get_hubspot_credentials, get
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",  # React app address
-]
+
+def _get_allowed_origins() -> list[str]:
+    configured_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+    return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+
+
+origins = _get_allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,
