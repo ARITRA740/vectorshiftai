@@ -7,8 +7,9 @@ import {
     CircularProgress
 } from '@mui/material';
 import axios from 'axios';
+import { getApiBaseUrl } from '../api-base-url';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = getApiBaseUrl();
 
 export const NotionIntegration = ({ user, org, integrationParams, setIntegrationParams }) => {
     const [isConnected, setIsConnected] = useState(false);
